@@ -1,0 +1,27 @@
+# LangChain Core & Ecosystem
+langchain>=0.2.0
+langchain-core>=0.2.0
+langchain-community>=0.2.0
+langchain-text-splitters>=0.2.0
+langchainhub
+
+# Document Loaders
+pypdf>=4.0.0
+
+# Google Gemini Integration
+langchain-google-genai>=1.0.0
+google-genai
+
+# Vector Database (Qdrant)
+qdrant-client>=1.9.0
+langchain-qdrant>=0.1.0
+
+# Observability & Tracing
+langfuse>=2.0.0
+
+# Environment Management
+python-dotenv
+
+# Mathematical & Advanced RAG Utilities (for RAPTOR / Clustering)
+scikit-learn
+numpy

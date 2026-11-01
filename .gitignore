@@ -1,0 +1,77 @@
+# ==========================================
+# Python & Bytecode
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# ==========================================
+# Virtual Environments
+# ==========================================
+RAG-chain/
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# ==========================================
+# Environment Variables & Secrets (CRITICAL)
+# ==========================================
+.env
+.env.local
+.env.*.local
+*.env
+# Ensure example file is tracked
+!.env.example
+
+# ==========================================
+# Vector Database & Storage
+# ==========================================
+# Qdrant Docker storage volumes & local DB files
+qdrant_storage/
+qdrant-local/storage/
+qdrant-local/data/
+*.sqlite
+*.sqlite3
+*.db
+
+# ==========================================
+# Logs & Observability
+# ==========================================
+*.log
+.langfuse/
+logs/
+
+# ==========================================
+# Testing & Type Checking Caches
+# ==========================================
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ==========================================
+# IDE & Operating System Files
+# ==========================================
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ==========================================
+# Optional: Raw Data & Large Files
+# ==========================================
+# The 4 sample research papers (~5MB total) can be committed so the repo works out of the box.
+# If you want to ignore all future or large PDFs, uncomment the lines below:
+*.pdf
+data/*.pdf
+src/data/*.pdf
