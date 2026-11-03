@@ -2,51 +2,27 @@ import os
 import time
 from typing import List, Optional
 from dotenv import load_dotenv
+
+# pyrefly: ignore[missing-import]
 from langchain_core.documents import Document
+# pyrefly: ignore[missing-import]
 from qdrant_client import QdrantClient
+# pyrefly: ignore[missing-import]
 from qdrant_client.http.models import Distance, VectorParams
+# pyrefly: ignore[missing-import]
 from langchain_qdrant import QdrantVectorStore
 
 from src.models.models import embd
+from src.storage.vector_store import get_qdrant_client, get_vector_store
 
 load_dotenv()
 
-
-def get_qdrant_client(
-    url: Optional[str] = None, 
-    api_key: Optional[str] = None
-) -> QdrantClient:
-    """
-    إنشاء وإرجاع كائن الاتصال بقاعدة بيانات Qdrant
-    """
-    target_url = url or os.getenv("QDRANT_URL", "http://localhost:6333")
-    target_api_key = api_key or os.getenv("QDRANT_API_KEY")
-    return QdrantClient(url=target_url, api_key=target_api_key)
-
-
-def get_vector_store(
-    collection_name: str = "research_papers",
-    client: Optional[QdrantClient] = None,
-    embedding=None,
-) -> QdrantVectorStore:
-    """
-    إرجاع كائن QdrantVectorStore متصل بالمجموعة للبحث والاسترجاع دون إعادة رفع المستندات
-    """
-    if client is None:
-        client = get_qdrant_client()
-    if embedding is None:
-        embedding = embd
-
-    return QdrantVectorStore(
-        client=client,
-        collection_name=collection_name,
-        embedding=embedding,
-    )
+DEFAULT_COLLECTION_NAME = "research_papers"
 
 
 def index_documents(
     documents: List[Document],
-    collection_name: str = "research_papers",
+    collection_name: str = DEFAULT_COLLECTION_NAME,
     client: Optional[QdrantClient] = None,
     embedding=None,
     recreate_collection: bool = False,
@@ -83,7 +59,6 @@ def index_documents(
 
     # إنشاء الـ collection إذا لم تكن موجودة بالفعل
     if not client.collection_exists(collection_name):
-        # حساب أبعاد الفيكتور تلقائياً من الموديل المستخدم
         sample_vec = embedding.embed_query("test")
         vector_size = len(sample_vec)
 
@@ -113,7 +88,6 @@ def index_documents(
         for attempt in range(max_retries):
             try:
                 vector_store.add_documents(documents=batch, batch_size=batch_size)
-                # فترة انتظار قصيرة بين كل دفعة وأخرى لتجنب إجهاد الـ Quota
                 time.sleep(1)
                 break
             except Exception as e:

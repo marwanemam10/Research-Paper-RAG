@@ -4,7 +4,7 @@ import argparse
 from pathlib import Path
 from dotenv import load_dotenv
 
-
+# ضبط الـ encoding لـ UTF-8 على أنظمة Windows لتجنب مشاكل الحروف والـ terminal
 if sys.platform == "win32":
     import io
     if hasattr(sys.stdout, "buffer"):
@@ -32,45 +32,62 @@ def initialize_rag_pipeline(
 ):
     """
     تهيئة الـ Pipeline والتأكد من وجود البيانات وفهرستها داخل Qdrant.
+    إذا كانت البيانات مفهرسة مسبقاً، يتم تخطي الـ Chunking والـ Embedding بالكامل للبدء الفوري.
     """
     print("=" * 60)
     print(">> Initializing Academic Research RAG Pipeline...")
     print("=" * 60)
 
     client = get_qdrant_client()
+
+    # التحقق من تشغيل سيرفر Qdrant
+    try:
+        collection_exists = client.collection_exists(collection_name)
+    except Exception as e:
+        print(f"\n[ERROR] Unable to connect to Qdrant at {os.getenv('QDRANT_URL', 'http://localhost:6333')}")
+        print("Please ensure Docker Desktop is running and start your container:")
+        print("   cd qdrant-local && docker compose up -d\n")
+        sys.exit(1)
+
     need_indexing = force_reindex
 
-    
+    # 1. فحص وجود الـ Collection وعدد الـ points المحفوظة مسبقاً
+    if not force_reindex and collection_exists:
+        points_count = client.count(collection_name).count
+        if points_count > 0:
+            print(f"[Success] Found indexed collection '{collection_name}' with {points_count} vectors.")
+            print("[Info] Skipping PDF loading, Chunking, and Embedding (instant start).")
+            vector_store = get_vector_store(collection_name=collection_name, client=client)
+            retriever = get_retriever(vector_store=vector_store, collection_name=collection_name, k=k)
+            print(">> Pipeline is ready to answer questions!")
+            print("=" * 60 + "\n")
+            return retriever
+        else:
+            print(f"[Warning] Collection '{collection_name}' exists but is empty.")
+            need_indexing = True
+    else:
+        if force_reindex:
+            print(f"[Info] Force re-index requested.")
+        else:
+            print(f"[Info] Collection '{collection_name}' not found.")
+        need_indexing = True
+
+    # 2. في حال كانت البيانات غير مفهرسة فقط: يتم تحميل الـ PDFs، التقطيع، والتضمين
+    print(f"\n[Step 1] Loading & Splitting PDFs from: '{data_dir}'...")
     splits = get_document_splits(data_dir=str(data_dir))
     total_chunks = len(splits)
+    print(f"[Success] Extracted {total_chunks} chunks.")
 
-    
-    if not client.collection_exists(collection_name):
-        print(f"[Info] Collection '{collection_name}' not found. Starting initial indexing...")
-        need_indexing = True
-    else:
-        points_count = client.count(collection_name).count
-        print(f"[Info] Found existing collection '{collection_name}' with {points_count}/{total_chunks} points.")
-        if points_count < total_chunks or force_reindex:
-            print(f"[Info] Indexing required (current: {points_count}, expected: {total_chunks}).")
-            need_indexing = True
-            force_reindex = True
+    print(f"\n[Step 2] Generating Embeddings & Indexing into Qdrant ('{collection_name}')...")
+    vector_store = index_documents(
+        documents=splits,
+        collection_name=collection_name,
+        client=client,
+        recreate_collection=force_reindex,
+        batch_size=50
+    )
 
-    if need_indexing:
-        print(f"\n[Step 1] Loaded {total_chunks} chunks from '{data_dir}'.")
-        print(f"\n[Step 2] Generating Embeddings & Indexing into Qdrant ('{collection_name}')...")
-        vector_store = index_documents(
-            documents=splits,
-            collection_name=collection_name,
-            client=client,
-            recreate_collection=force_reindex,
-            batch_size=50
-        )
-    else:
-        print(f"[Success] All {points_count} chunks are indexed and ready. Skipping ingestion.")
-        vector_store = get_vector_store(collection_name=collection_name, client=client)
-
-
+    # إنشاء كائن الـ Retriever
     retriever = get_retriever(vector_store=vector_store, collection_name=collection_name, k=k)
     print(">> Pipeline is ready to answer questions!")
     print("=" * 60 + "\n")
@@ -88,18 +105,18 @@ def query_pipeline(
     """
     print(f"\n[Question]: {question}\n")
 
-  
+    # 1. استرجاع المستندات ذات الصلة
     retrieved_docs = retrieve_documents(query=question, retriever=retriever, session_id=session_id)
 
-
+    # 2. توليد الإجابة عبر نموذج Gemini
     answer = generate_answer(question=question, retriever=retriever, session_id=session_id)
 
-
+    # عرض الإجابة
     print("=" * 20 + " Answer " + "=" * 20)
     print(answer)
     print("=" * 48)
 
-    
+    # عرض المصادر المسترجعة
     if show_sources and retrieved_docs:
         print("\n[Sources Used]:")
         for idx, doc in enumerate(retrieved_docs, start=1):

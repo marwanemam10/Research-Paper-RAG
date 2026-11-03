@@ -16,6 +16,9 @@ google-genai
 qdrant-client>=1.9.0
 langchain-qdrant>=0.1.0
 
+# Supabase (PostgreSQL Metadata & File Storage)
+supabase>=2.0.0
+
 # Observability & Tracing
 langfuse>=2.0.0
 
