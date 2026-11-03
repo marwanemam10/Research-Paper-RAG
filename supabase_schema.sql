@@ -38,3 +38,4 @@ CREATE TRIGGER trigger_documents_updated_at
     BEFORE UPDATE ON public.documents
     FOR EACH ROW
     EXECUTE PROCEDURE update_updated_at_column();
+

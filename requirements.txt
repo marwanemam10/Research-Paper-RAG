@@ -1,3 +1,8 @@
+# FastAPI Web Framework & Server
+fastapi>=0.110.0
+uvicorn[standard]>=0.28.0
+python-multipart>=0.0.9
+
 # LangChain Core & Ecosystem
 langchain>=0.2.0
 langchain-core>=0.2.0

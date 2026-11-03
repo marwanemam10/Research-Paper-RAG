@@ -12,3 +12,4 @@ if __name__ == "__main__":
         ingest_main()
     else:
         query_main()
+

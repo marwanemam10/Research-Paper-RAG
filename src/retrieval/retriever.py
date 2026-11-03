@@ -57,3 +57,4 @@ def retrieve_documents(
 
     docs = retriever.invoke(query, config=config)
     return docs
+
