@@ -66,9 +66,10 @@ class IngestionService:
             existing_doc = get_document_by_hash(self.supabase, file_hash)
             if existing_doc and existing_doc.get("status") == "indexed" and not force:
                 print(f"[Deduplication] '{filename}' is already indexed. Skipping.")
+                doc_id_val = existing_doc.get("file_id") or existing_doc.get("id")
                 return {
                     "status": "already_indexed",
-                    "doc_id": existing_doc["id"],
+                    "doc_id": doc_id_val,
                     "filename": filename,
                     "file_hash": file_hash,
                     "total_chunks": existing_doc.get("total_chunks", 0),
@@ -76,7 +77,7 @@ class IngestionService:
                 }
 
             if existing_doc and force:
-                old_id = existing_doc["id"]
+                old_id = existing_doc.get("file_id") or existing_doc.get("id")
                 delete_documents_by_file_id(file_id=old_id, collection_name=self.collection_name, client=self.qdrant)
 
         # حفظ الملف مؤقتاً لتقطيعه بواسطة PyPDFLoader
@@ -100,9 +101,10 @@ class IngestionService:
                     client=self.supabase,
                     filename=filename,
                     file_hash=file_hash,
-                    storage_path=storage_path
+                    storage_path=storage_path,
+                    file_size=len(file_bytes)
                 )
-                doc_id = doc_record["id"]
+                doc_id = doc_record.get("file_id") or doc_record.get("id")
 
             # التقطيع
             chunks = split_pdf(tmp_path)

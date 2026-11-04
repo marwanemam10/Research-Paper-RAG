@@ -7,13 +7,20 @@ INSERT INTO storage.buckets (id, name, public)
 VALUES ('research-papers', 'research-papers', false)
 ON CONFLICT (id) DO NOTHING;
 
--- 2. Create Documents Table
+-- 2. Create Document Status Enum & Documents Table
+DO $$ BEGIN
+    CREATE TYPE public.document_status AS ENUM ('pending', 'processing', 'indexed', 'failed');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
+
 CREATE TABLE IF NOT EXISTS public.documents (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    file_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    file_name TEXT NOT NULL,
     file_hash TEXT NOT NULL UNIQUE,
-    filename TEXT NOT NULL,
+    file_size BIGINT NOT NULL DEFAULT 0,
     storage_path TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'processing' CHECK (status IN ('processing', 'indexed', 'failed')),
+    status public.document_status NOT NULL DEFAULT 'pending',
     total_chunks INTEGER DEFAULT 0,
     error_message TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),

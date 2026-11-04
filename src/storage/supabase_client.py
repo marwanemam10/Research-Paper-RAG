@@ -65,22 +65,57 @@ def ensure_storage_bucket(client: Client, bucket_name: str = DEFAULT_BUCKET_NAME
         pass
 
 
+def _normalize_doc_record(doc: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """
+    توحيد تسميات الحقول بين schemas المختلفة (file_id/id و file_name/filename).
+    """
+    if not doc:
+        return doc
+    
+    # ضمان توفر كلا المفتاحين id و file_id
+    if "file_id" in doc and "id" not in doc:
+        doc["id"] = doc["file_id"]
+    elif "id" in doc and "file_id" not in doc:
+        doc["file_id"] = doc["id"]
+
+    # ضمان توفر كلا المفتاحين filename و file_name
+    if "file_name" in doc and "filename" not in doc:
+        doc["filename"] = doc["file_name"]
+    elif "filename" in doc and "file_name" not in doc:
+        doc["file_name"] = doc["filename"]
+
+    return doc
+
+
 def get_document_by_hash(client: Client, file_hash: str) -> Optional[Dict[str, Any]]:
     """
     البحث عن مستند في جدول documents باستخدام الـ file_hash.
     """
     response = client.table("documents").select("*").eq("file_hash", file_hash).execute()
     data = response.data
-    return data[0] if data and len(data) > 0 else None
+    return _normalize_doc_record(data[0]) if data and len(data) > 0 else None
 
 
 def get_document_by_id(client: Client, doc_id: str) -> Optional[Dict[str, Any]]:
     """
     البحث عن مستند في جدول documents باستخدام الـ UUID.
+    يدعم البحث عبر عمود file_id أو id.
     """
-    response = client.table("documents").select("*").eq("id", doc_id).execute()
-    data = response.data
-    return data[0] if data and len(data) > 0 else None
+    try:
+        response = client.table("documents").select("*").eq("file_id", doc_id).execute()
+        if response.data and len(response.data) > 0:
+            return _normalize_doc_record(response.data[0])
+    except Exception:
+        pass
+
+    try:
+        response = client.table("documents").select("*").eq("id", doc_id).execute()
+        if response.data and len(response.data) > 0:
+            return _normalize_doc_record(response.data[0])
+    except Exception:
+        pass
+
+    return None
 
 
 def list_documents(client: Client, limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
@@ -94,7 +129,8 @@ def list_documents(client: Client, limit: int = 50, offset: int = 0) -> List[Dic
         .range(offset, offset + limit - 1)
         .execute()
     )
-    return response.data or []
+    docs = response.data or []
+    return [_normalize_doc_record(d) for d in docs]
 
 
 def upload_pdf_to_storage(
@@ -160,35 +196,65 @@ def delete_document_record(client: Client, doc_id: str) -> None:
     """
     حذف سجل المستند من جدول documents في قاعدة البيانات.
     """
-    client.table("documents").delete().eq("id", doc_id).execute()
+    try:
+        client.table("documents").delete().eq("file_id", doc_id).execute()
+    except Exception:
+        pass
+    try:
+        client.table("documents").delete().eq("id", doc_id).execute()
+    except Exception:
+        pass
 
 
 def create_or_update_document_record(
     client: Client,
     filename: str,
     file_hash: str,
-    storage_path: str
+    storage_path: str,
+    file_size: int = 0
 ) -> Dict[str, Any]:
     """
     إنشاء سجل جديد أو تحديث السجل بحالة 'processing'.
+    يدعم الـ schema الفعلي (file_name, file_size, file_id) مع التوافق التلقائي.
     """
     existing = get_document_by_hash(client, file_hash)
 
     payload = {
         "file_hash": file_hash,
-        "filename": filename,
+        "file_name": filename,
+        "file_size": file_size,
         "storage_path": storage_path,
         "status": "processing",
         "error_message": None,
     }
 
-    if existing:
-        doc_id = existing["id"]
-        response = client.table("documents").update(payload).eq("id", doc_id).execute()
-        return response.data[0]
-    else:
-        response = client.table("documents").insert(payload).execute()
-        return response.data[0]
+    try:
+        if existing:
+            doc_id = existing.get("file_id") or existing.get("id")
+            try:
+                res = client.table("documents").update(payload).eq("file_id", doc_id).execute()
+            except Exception:
+                res = client.table("documents").update(payload).eq("id", doc_id).execute()
+            return _normalize_doc_record(res.data[0]) if res.data else existing
+        else:
+            res = client.table("documents").insert(payload).execute()
+            return _normalize_doc_record(res.data[0])
+    except Exception:
+        # Fallback في حال كان الجدول يستخدم أعمدة قديمة
+        legacy_payload = {
+            "file_hash": file_hash,
+            "filename": filename,
+            "storage_path": storage_path,
+            "status": "processing",
+            "error_message": None,
+        }
+        if existing:
+            doc_id = existing.get("id") or existing.get("file_id")
+            res = client.table("documents").update(legacy_payload).eq("id", doc_id).execute()
+            return _normalize_doc_record(res.data[0]) if res.data else existing
+        else:
+            res = client.table("documents").insert(legacy_payload).execute()
+            return _normalize_doc_record(res.data[0])
 
 
 def mark_document_indexed(client: Client, doc_id: str, total_chunks: int) -> Dict[str, Any]:
@@ -200,8 +266,21 @@ def mark_document_indexed(client: Client, doc_id: str, total_chunks: int) -> Dic
         "total_chunks": total_chunks,
         "error_message": None,
     }
-    response = client.table("documents").update(payload).eq("id", doc_id).execute()
-    return response.data[0] if response.data else payload
+    try:
+        res = client.table("documents").update(payload).eq("file_id", doc_id).execute()
+        if res.data:
+            return _normalize_doc_record(res.data[0])
+    except Exception:
+        pass
+
+    try:
+        res = client.table("documents").update(payload).eq("id", doc_id).execute()
+        if res.data:
+            return _normalize_doc_record(res.data[0])
+    except Exception:
+        pass
+
+    return payload
 
 
 def mark_document_failed(client: Client, doc_id: str, error_message: str) -> Dict[str, Any]:
@@ -212,5 +291,18 @@ def mark_document_failed(client: Client, doc_id: str, error_message: str) -> Dic
         "status": "failed",
         "error_message": error_message[:1000] if error_message else "Unknown error",
     }
-    response = client.table("documents").update(payload).eq("id", doc_id).execute()
-    return response.data[0] if response.data else payload
+    try:
+        res = client.table("documents").update(payload).eq("file_id", doc_id).execute()
+        if res.data:
+            return _normalize_doc_record(res.data[0])
+    except Exception:
+        pass
+
+    try:
+        res = client.table("documents").update(payload).eq("id", doc_id).execute()
+        if res.data:
+            return _normalize_doc_record(res.data[0])
+    except Exception:
+        pass
+
+    return payload
